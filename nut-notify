@@ -11,7 +11,7 @@ case "$TYPE" in
        SUBJECT="[$HOST] UPS ON BATTERY"
        ;;
    ONLINE)
-       SUBJECT="[$HOST] UPS ON LINE/POWER RESTORED"
+       SUBJECT="[$HOST] UPS ONLINE / LINE POWER RESTORED"
        ;;
    LOWBATT)
        SUBJECT="[$HOST] UPS LOW BATTERY"
@@ -48,40 +48,67 @@ BATTERY_RUNTIME="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "battery.runt
 INPUT_VOLTAGE="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "input.voltage" {print $2}')"
 OUTPUT_VOLTAGE="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "output.voltage" {print $2}')"
 UPS_LOAD="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "ups.load" {print $2}')"
+UPS_REALPOWER="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "ups.realpower" {print $2}')"
 UPS_STATUS_VALUE="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "ups.status" {print $2}')"
 
 # Convert runtime from seconds to minutes when available.
 if [[ "$BATTERY_RUNTIME" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-   BATTERY_RUNTIME_MIN="$(awk "BEGIN {printf \"%.1f\", $BATTERY_RUNTIME / 60}")"
+    BATTERY_RUNTIME_MIN="$(awk "BEGIN {printf \"%.1f\", $BATTERY_RUNTIME / 60}")"
 else
-   BATTERY_RUNTIME_MIN="$BATTERY_RUNTIME"
+    BATTERY_RUNTIME_MIN="$BATTERY_RUNTIME"
+fi
+
+# Translate common NUT status flags into human-readable text.
+STATUS_DESCRIPTION="$UPS_STATUS_VALUE"
+
+if [ -n "$UPS_STATUS_VALUE" ]; then
+    STATUS_DESCRIPTION="$(printf '%s\n' "$UPS_STATUS_VALUE" | awk '
+    {
+        for (i = 1; i <= NF; i++) {
+            if (i > 1) printf ", "
+            switch ($i) {
+                case "OL":      printf "ON LINE"; break
+                case "OB":      printf "ON BATTERY"; break
+                case "LB":      printf "LOW BATTERY"; break
+                case "FSD":     printf "FORCED SHUTDOWN"; break
+                case "CHRG":    printf "CHARGING"; break
+                case "DISCHRG": printf "DISCHARGING"; break
+                case "BYPASS":  printf "BYPASS"; break
+                case "CAL":     printf "CALIBRATION"; break
+                case "OFF":     printf "OFF"; break
+                case "RB":      printf "REPLACE BATTERY"; break
+                default:        printf "%s", $i
+            }
+        }
+        printf "\n"
+    }')"
 fi
 
 SUMMARY="Battery: ${BATTERY_CHARGE:-unknown}%
 Runtime: ${BATTERY_RUNTIME_MIN:-unknown} min
-Load: ${UPS_LOAD:-unknown}%
+Load: ${UPS_LOAD:-unknown}% (${UPS_REALPOWER:-unknown} W)
 Input: ${INPUT_VOLTAGE:-unknown} V
 Output: ${OUTPUT_VOLTAGE:-unknown} V
-Status: ${UPS_STATUS_VALUE:-unknown}"
+Status: ${STATUS_DESCRIPTION:-unknown}"
 
 {
-   printf 'From: %s\n' "upsmon@$HOST"
-   printf 'To: %s\n' "$TO"
-   printf 'Subject: %s\n' "$SUBJECT"
-   printf '\n'
+    printf 'From: %s\n' "upsmon@$HOST"
+    printf 'To: %s\n' "$TO"
+    printf 'Subject: %s\n' "$SUBJECT"
+    printf '\n'
 
-   printf 'UPS: %s\n' "$UPS"
-   printf 'Event: %s\n' "$TYPE"
-   printf 'Host: %s\n' "$HOST"
-   printf '\n'
+    printf 'UPS: %s\n' "$UPS"
+    printf 'Event: %s\n' "$TYPE"
+    printf 'Host: %s\n' "$HOST"
+    printf '\n'
 
-   printf '%s\n' "$MESSAGE"
-   printf '\n'
+    printf '%s\n' "$MESSAGE"
+    printf '\n'
 
-   printf '%s\n' '--- UPS SUMMARY ---'
-   printf '%s\n' "$SUMMARY"
-   printf '\n'
+    printf '%s\n' '--- UPS SUMMARY ---'
+    printf '%s\n' "$SUMMARY"
+    printf '\n'
 
-   printf '%s\n' '--- FULL UPS STATUS ---'
-   printf '%s\n' "$UPS_STATUS"
+    printf '%s\n' '--- FULL UPS STATUS ---'
+    printf '%s\n' "$UPS_STATUS"
 } | /usr/bin/msmtp "$TO"
