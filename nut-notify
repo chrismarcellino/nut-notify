@@ -66,19 +66,29 @@ if [ -n "$UPS_STATUS_VALUE" ]; then
     {
         for (i = 1; i <= NF; i++) {
             if (i > 1) printf ", "
-            switch ($i) {
-                case "OL":      printf "ON LINE"; break
-                case "OB":      printf "ON BATTERY"; break
-                case "LB":      printf "LOW BATTERY"; break
-                case "FSD":     printf "FORCED SHUTDOWN"; break
-                case "CHRG":    printf "CHARGING"; break
-                case "DISCHRG": printf "DISCHARGING"; break
-                case "BYPASS":  printf "BYPASS"; break
-                case "CAL":     printf "CALIBRATION"; break
-                case "OFF":     printf "OFF"; break
-                case "RB":      printf "REPLACE BATTERY"; break
-                default:        printf "%s", $i
-            }
+
+            if ($i == "OL")
+                printf "ON LINE"
+            else if ($i == "OB")
+                printf "ON BATTERY"
+            else if ($i == "LB")
+                printf "LOW BATTERY"
+            else if ($i == "FSD")
+                printf "FORCED SHUTDOWN"
+            else if ($i == "CHRG")
+                printf "CHARGING"
+            else if ($i == "DISCHRG")
+                printf "DISCHARGING"
+            else if ($i == "BYPASS")
+                printf "BYPASS"
+            else if ($i == "CAL")
+                printf "CALIBRATION"
+            else if ($i == "OFF")
+                printf "OFF"
+            else if ($i == "RB")
+                printf "REPLACE BATTERY"
+            else
+                printf "%s", $i
         }
         printf "\n"
     }')"
