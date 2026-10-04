@@ -7,46 +7,81 @@ UPS="${UPSNAME:-unknown}"
 MESSAGE="${1:-NUT notification}"
 
 case "$TYPE" in
-    ONBATT)
-        SUBJECT="[$HOST] UPS ON BATTERY"
-        ;;
-    ONLINE)
-        SUBJECT="[$HOST] UPS BACK ON LINE"
-        ;;
-    LOWBATT)
-        SUBJECT="[$HOST] UPS LOW BATTERY"
-        ;;
-    FSD)
-        SUBJECT="[$HOST] UPS FORCED SHUTDOWN"
-        ;;
-    SHUTDOWN)
-        SUBJECT="[$HOST] HOST SHUTTING DOWN"
-        ;;
-    COMMOK)
-        SUBJECT="[$HOST] UPS COMMUNICATION RESTORED"
-        ;;
-    COMMBAD)
-        SUBJECT="[$HOST] UPS COMMUNICATION LOST"
-        ;;
-    NOCOMM)
-        SUBJECT="[$HOST] UPS NOT AVAILABLE"
-        ;;
-    REPLBATT)
-        SUBJECT="[$HOST] UPS BATTERY REPLACEMENT REQUIRED"
-        ;;
-    *)
-        SUBJECT="[$HOST] NUT EVENT: $TYPE"
-        ;;
+   ONBATT)
+       SUBJECT="[$HOST] UPS ON BATTERY"
+       ;;
+   ONLINE)
+       SUBJECT="[$HOST] UPS ON LINE/POWER RESTORED"
+       ;;
+   LOWBATT)
+       SUBJECT="[$HOST] UPS LOW BATTERY"
+       ;;
+   FSD)
+       SUBJECT="[$HOST] UPS FORCED SHUTDOWN"
+       ;;
+   SHUTDOWN)
+       SUBJECT="[$HOST] HOST SHUTTING DOWN"
+       ;;
+   COMMOK)
+       SUBJECT="[$HOST] UPS COMMUNICATION RESTORED"
+       ;;
+   COMMBAD)
+       SUBJECT="[$HOST] UPS COMMUNICATION LOST"
+       ;;
+   NOCOMM)
+       SUBJECT="[$HOST] UPS COMMUNICATION NOT AVAILABLE"
+       ;;
+   REPLBATT)
+       SUBJECT="[$HOST] UPS BATTERY REPLACEMENT REQUIRED"
+       ;;
+   *)
+       SUBJECT="[$HOST] NUT EVENT: $TYPE"
+       ;;
 esac
 
+# Query the UPS that generated the notification.
+UPS_STATUS="$(/usr/bin/upsc "$UPS" 2>&1)"
+
+# Extract commonly useful UPS values.
+BATTERY_CHARGE="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "battery.charge" {print $2}')"
+BATTERY_RUNTIME="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "battery.runtime" {print $2}')"
+INPUT_VOLTAGE="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "input.voltage" {print $2}')"
+OUTPUT_VOLTAGE="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "output.voltage" {print $2}')"
+UPS_LOAD="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "ups.load" {print $2}')"
+UPS_STATUS_VALUE="$(printf '%s\n' "$UPS_STATUS" | awk -F': ' '$1 == "ups.status" {print $2}')"
+
+# Convert runtime from seconds to minutes when available.
+if [[ "$BATTERY_RUNTIME" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+   BATTERY_RUNTIME_MIN="$(awk "BEGIN {printf \"%.1f\", $BATTERY_RUNTIME / 60}")"
+else
+   BATTERY_RUNTIME_MIN="$BATTERY_RUNTIME"
+fi
+
+SUMMARY="Battery: ${BATTERY_CHARGE:-unknown}%
+Runtime: ${BATTERY_RUNTIME_MIN:-unknown} min
+Load: ${UPS_LOAD:-unknown}%
+Input: ${INPUT_VOLTAGE:-unknown} V
+Output: ${OUTPUT_VOLTAGE:-unknown} V
+Status: ${UPS_STATUS_VALUE:-unknown}"
+
 {
-    printf 'From: %s\n' "proxmox@$HOST"
-    printf 'To: %s\n' "$TO"
-    printf 'Subject: %s\n' "$SUBJECT"
-    printf '\n'
-    printf 'UPS: %s\n' "$UPS"
-    printf 'Event: %s\n' "$TYPE"
-    printf 'Host: %s\n' "$HOST"
-    printf '\n'
-    printf '%s\n' "$MESSAGE"
+   printf 'From: %s\n' "upsmon@$HOST"
+   printf 'To: %s\n' "$TO"
+   printf 'Subject: %s\n' "$SUBJECT"
+   printf '\n'
+
+   printf 'UPS: %s\n' "$UPS"
+   printf 'Event: %s\n' "$TYPE"
+   printf 'Host: %s\n' "$HOST"
+   printf '\n'
+
+   printf '%s\n' "$MESSAGE"
+   printf '\n'
+
+   printf '%s\n' '--- UPS SUMMARY ---'
+   printf '%s\n' "$SUMMARY"
+   printf '\n'
+
+   printf '%s\n' '--- FULL UPS STATUS ---'
+   printf '%s\n' "$UPS_STATUS"
 } | /usr/bin/msmtp "$TO"
